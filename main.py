@@ -4,9 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 import os
 
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # --- CONFIGURATION ---
-# PASTE YOUR DEEPSEEK KEY INSIDE THE QUOTES BELOW
-API_KEY = "sk-6d0829007f174ed589ef1d80c081c1cb" 
+# Get API Key from environment variable
+API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
+if not API_KEY:
+    raise ValueError("Missing DEEPSEEK_API_KEY environment variable")
 
 # Initialize the DeepSeek Client
 client = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
