@@ -206,13 +206,60 @@ class EvaluationRequest(BaseModel):
 
 @app.post("/evaluate")
 async def evaluate_session(request: EvaluationRequest):
-    # Same evaluation logic as before...
-    system_prompt = """
-    You are a Master Sales Trainer. 
-    Analyze the conversation...
-    (Keep your existing evaluation prompt here)
-    """
-    # ... (rest of evaluation code remains the same)
+    system_prompt = f"""
+    You are a Master Sales Trainer in Singapore.
+    You just observed a roleplay session between a user (Real Estate Agent) and a simulated persona ({request.persona_id}).
     
-    # Placeholder return for context of this snippet
-    return {"evaluation": "Evaluation placeholder"}
+    ### GOAL
+    Evaluate the user's performance based on:
+    1. **Persuasion:** Did they convince the persona?
+    2. **Empathy:** Did they address the persona's concerns?
+    3. **Professionalism:** Did they stay calm?
+
+    ### OUTPUT FORMAT
+    You must output ONLY a valid JSON object. No markdown, no preambles.
+    {{
+        "score": 0-100,
+        "outcome": "Success" | "Failure" | "Neutral",
+        "feedback": "2-3 sentences of specific advice."
+    }}
+    """
+    
+    # Convert history to a readable string for the LLM
+    conversation_text = ""
+    for msg in request.chat_history:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        # Filter out the hidden JSON thought process from the assistant's output if present
+        if role == "assistant" and "{" in content and "}" in content:
+             # Basic cleanup to show only the spoken part if possible, 
+             # but sending raw is also fine as the evaluator can ignore the JSON.
+             pass
+        conversation_text += f"{role.upper()}: {content}\n"
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Here is the transcript:\n\n{conversation_text}"}
+            ],
+            temperature=0.7,
+            stream=False
+        )
+        
+        evaluation_content = response.choices[0].message.content
+        
+        # Ensure we just send the content. The frontend tries to parse it.
+        # If the LLM wraps it in ```json ... ```, the frontend regex handles it.
+        return {"evaluation": evaluation_content}
+
+    except Exception as e:
+        print(f"Evaluation Error: {e}")
+        # Return a fallback JSON so the frontend doesn't crash
+        fallback = {
+            "score": 0,
+            "outcome": "Error",
+            "feedback": "System overloaded or failed to evaluate. Please try again."
+        }
+        return {"evaluation": json.dumps(fallback)}
